@@ -1,7 +1,7 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
-#ifndef GDK_TIMING_TIME_TYPES_H
-#define GDK_TIMING_TIME_TYPES_H
+#ifndef GDK_TIMING_TYPES_H
+#define GDK_TIMING_TYPES_H
 
 namespace gdk::timing {
     /// \brief the unit every rate and duration in this library is expressed in

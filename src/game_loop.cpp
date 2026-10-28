@@ -1,14 +1,14 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
 #include <gdk/timing/game_loop.h>
 
 #include <gdk/timing/exception.h>
+#include <gdk/timing/impl_sleep.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <string>
-#include <thread>
 
 using namespace gdk::timing;
 
@@ -133,7 +133,7 @@ bool game_loop::tick() {
     if (m_LastTickStart) {
         m_Frame.unscaled_delta = std::min(
             duration<time_type>(currentFrameStartTimePoint - *m_LastTickStart).count(), m_MaximumDeltaTime);
-        m_Frame.delta = m_Frame.unscaled_delta * time_scale();
+        m_Frame.delta = std::min(m_Frame.unscaled_delta * time_scale(), m_MaximumDeltaTime);
         m_Frame.elapsed += m_Frame.delta;
         ++m_Frame.index;
     }
@@ -177,7 +177,7 @@ bool game_loop::tick() {
         if (remaining <= 0) break;
 
         if (remaining > SPIN_MARGIN)
-            std::this_thread::sleep_for(duration<time_type>(remaining - SPIN_MARGIN));
+            _sleep_for(remaining - SPIN_MARGIN);
     }
 
     return SHOULD_CONTINUE;

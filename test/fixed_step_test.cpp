@@ -1,10 +1,11 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
 #include <jfc/catch.hpp>
 
 #include <gdk/timing/game_loop.h>
 #include <gdk/timing/exception.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <stdexcept>
@@ -93,10 +94,14 @@ TEST_CASE("steps and frames are counted independently", "[fixed]") {
 
         REQUIRE(seen.size() == 50);
 
+        const double STEP = 0.001;
+
         for (std::size_t i = 0; i < seen.size(); ++i) {
+            const double expected = static_cast<double>(i) * STEP;
+
             REQUIRE(seen[i].index == i);
             REQUIRE(seen[i].delta == 0.001);
-            REQUIRE(seen[i].elapsed == static_cast<double>(i) * 0.001);
+            REQUIRE(seen[i].elapsed == expected);
         }
     }
 
@@ -169,6 +174,74 @@ TEST_CASE("the delta ceiling bounds how many steps one frame can drive", "[fixed
 
     REQUIRE(mostInOneFrame <= static_cast<std::uint64_t>(CEILING * RATE) + 1);
     REQUIRE(mostInOneFrame > 1);
+}
+
+TEST_CASE("the delta ceiling holds whatever the time scale", "[fixed][spiral][scale]") {
+    constexpr double CEILING = 0.05;
+    constexpr double RATE = 200;
+    constexpr double SCALE = 4;
+
+    std::uint64_t stepsAtFrameStart = 0;
+    std::uint64_t steps = 0;
+    std::uint64_t mostInOneFrame = 0;
+    double largestDelta = 0;
+    int frames = 0;
+
+    game_loop loop(frames_per_second::uncapped(),
+        [&](const game_loop::frame aFrame) {
+            mostInOneFrame = std::max(mostInOneFrame, steps - stepsAtFrameStart);
+            stepsAtFrameStart = steps;
+            largestDelta = std::max(largestDelta, aFrame.delta);
+
+            if (frames == 1) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            return ++frames >= 5 ? game_loop::SHOULD_CLOSE : game_loop::SHOULD_CONTINUE;
+        },
+        steps_per_second{RATE},
+        [&](const game_loop::step) { ++steps; return game_loop::SHOULD_CONTINUE; },
+        CEILING);
+
+    loop.set_time_scale(SCALE);
+    loop.run();
+
+    REQUIRE(largestDelta == Approx(CEILING));
+    REQUIRE(largestDelta <= CEILING);
+    REQUIRE(mostInOneFrame <= static_cast<std::uint64_t>(CEILING * RATE) + 1);
+}
+
+TEST_CASE("a fixed step that throws runs again on the next tick", "[fixed][exception]") {
+    struct from_the_step final {};
+
+    std::vector<std::uint64_t> seen;
+    bool thrown = false;
+
+    game_loop loop(frames_per_second{1000},
+        [](const game_loop::frame aFrame) {
+            return aFrame.index >= 6 ? game_loop::SHOULD_CLOSE : game_loop::SHOULD_CONTINUE;
+        },
+        steps_per_second{2000},
+        [&](const game_loop::step aStep) {
+            seen.push_back(aStep.index);
+
+            if (aStep.index == 3 && !thrown) {
+                thrown = true;
+                throw from_the_step{};
+            }
+
+            return game_loop::SHOULD_CONTINUE;
+        });
+
+    REQUIRE_THROWS_AS(loop.run(), from_the_step);
+
+    loop.run();
+
+    REQUIRE(std::count(seen.begin(), seen.end(), 3u) == 2);
+
+    seen.erase(std::find(seen.begin(), seen.end(), 3u));
+
+    REQUIRE(seen.size() > 4);
+
+    for (std::size_t i = 0; i < seen.size(); ++i) REQUIRE(seen[i] == i);
 }
 
 TEST_CASE("a fixed loop refuses what it cannot simulate", "[fixed][validation]") {

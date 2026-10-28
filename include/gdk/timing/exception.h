@@ -1,4 +1,4 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
 #ifndef GDK_TIMING_EXCEPTION_H
 #define GDK_TIMING_EXCEPTION_H

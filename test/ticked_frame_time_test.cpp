@@ -1,4 +1,4 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
 #include <jfc/catch.hpp>
 
@@ -13,16 +13,12 @@ using namespace gdk::timing;
 namespace {
     constexpr double GAP_SECONDS = 0.03;
 
-    [[nodiscard]] std::vector<game_loop::frame> ticked_with_gaps(game_loop &aLoop, const int aTicks) {
-        std::vector<game_loop::frame> seen;
-
+    void tick_with_gaps(game_loop &aLoop, const int aTicks) {
         for (int i = 0; i < aTicks; ++i) {
+            if (i > 0) std::this_thread::sleep_for(std::chrono::duration<double>(GAP_SECONDS));
+
             (void)aLoop.tick();
-
-            std::this_thread::sleep_for(std::chrono::duration<double>(GAP_SECONDS));
         }
-
-        return seen;
     }
 }
 
@@ -37,7 +33,7 @@ TEST_CASE("a frame is measured from one tick's start to the next's", "[tick][tim
     SECTION("the wait between ticks belongs to the frame, whoever calls tick") {
         const auto started = std::chrono::steady_clock::now();
 
-        (void)ticked_with_gaps(loop, 4);
+        tick_with_gaps(loop, 4);
 
         const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
 
@@ -52,7 +48,7 @@ TEST_CASE("a frame is measured from one tick's start to the next's", "[tick][tim
             REQUIRE(seen[i].elapsed == Approx(seen[i - 1].elapsed + seen[i].delta));
         }
 
-        REQUIRE(seen.back().elapsed >= (wall - GAP_SECONDS) * 0.8);
+        REQUIRE(seen.back().elapsed >= wall * 0.8);
         REQUIRE(seen.back().elapsed <= wall);
     }
 

@@ -1,4 +1,4 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
 #ifndef GDK_TIMING_GAME_LOOP_H
 #define GDK_TIMING_GAME_LOOP_H
@@ -29,7 +29,7 @@ namespace gdk::timing {
             /// \brief seconds of game time since the loop started
             time_type elapsed;
 
-            /// \brief seconds of game time the previous frame covered, after clamping and scaling
+            /// \brief seconds of game time the previous frame covered: its wall clock scaled, then clamped
             time_type delta;
 
             /// \brief seconds of wall clock the previous frame took, after clamping
@@ -54,19 +54,11 @@ namespace gdk::timing {
             std::uint64_t index;
         };
 
-        using loop_behavior_type = std::function<
-            bool //shouldClose
-            (
-                frame
-            )
-        >;
+        /// \brief runs once per frame; returns `SHOULD_CLOSE` to end the loop
+        using loop_behavior_type = std::function<bool(frame)>;
 
-        using fixed_behavior_type = std::function<
-            bool //shouldClose
-            (
-                step
-            )
-        >;
+        /// \brief runs once per fixed step; returns `SHOULD_CLOSE` to end the loop
+        using fixed_behavior_type = std::function<bool(step)>;
 
         static constexpr bool SHOULD_CLOSE = true;
         static constexpr bool SHOULD_CONTINUE = !SHOULD_CLOSE;
@@ -84,8 +76,8 @@ namespace gdk::timing {
         ///
         /// \param aMaximumFramesPerSecond frames per second not to exceed, or
         /// frames_per_second::uncapped()
-        /// \param aLoopBehavior run once per frame; returns \ref SHOULD_CLOSE to end the loop
-        /// \param aMaximumDeltaTime ceiling on the delta handed to the behaviour, in seconds
+        /// \param aLoopBehavior run once per frame; returns `SHOULD_CLOSE` to end the loop
+        /// \param aMaximumDeltaTime ceiling on the delta handed to the behaviour, in seconds of game time
         /// \exception exception an argument is out of range, or the behaviour is empty
         game_loop(const frames_per_second aMaximumFramesPerSecond, loop_behavior_type aLoopBehavior,
             const time_type aMaximumDeltaTime = DEFAULT_MAXIMUM_DELTA_TIME);
@@ -94,11 +86,12 @@ namespace gdk::timing {
         ///
         /// \param aMaximumFramesPerSecond frames per second not to exceed, or
         /// frames_per_second::uncapped()
-        /// \param aLoopBehavior run once per frame; returns \ref SHOULD_CLOSE to end the loop
+        /// \param aLoopBehavior run once per frame; returns `SHOULD_CLOSE` to end the loop
         /// \param aStepsPerSecond steps per second of simulated time. 60 is a common choice; higher
         /// costs more and resolves faster motion, lower costs less and tunnels sooner
-        /// \param aFixedBehavior run once per step; returns \ref SHOULD_CLOSE to end the loop
-        /// \param aMaximumDeltaTime ceiling on the delta handed to the behaviours, in seconds
+        /// \param aFixedBehavior run once per step; returns `SHOULD_CLOSE` to end the loop
+        /// \param aMaximumDeltaTime ceiling on the delta handed to the behaviours, in seconds of game time,
+        /// so one frame runs at most `aMaximumDeltaTime * aStepsPerSecond` steps, whatever the time scale
         /// \exception exception an argument is out of range, or a behaviour is empty
         game_loop(const frames_per_second aMaximumFramesPerSecond, loop_behavior_type aLoopBehavior,
             const steps_per_second aStepsPerSecond, fixed_behavior_type aFixedBehavior,
@@ -107,18 +100,20 @@ namespace gdk::timing {
         /// \brief the step rate this loop simulates at, or a rate of zero if it does not simulate
         [[nodiscard]] steps_per_second step_rate() const;
 
-        /// \brief change the frame rate cap, including while the loop is running
+        /// \brief change the frame rate cap, from any thread, including while the loop is running
         ///
         /// \exception exception the rate is negative or not a number
         void set_maximum_frames_per_second(const frames_per_second aMaximumFramesPerSecond);
 
-        /// \brief the current frame rate cap, or frames_per_second::uncapped()
+        /// \brief the current frame rate cap, or frames_per_second::uncapped(); from any thread
         [[nodiscard]] frames_per_second maximum_frames_per_second() const;
 
-        /// \brief scale game time against wall clock, including while the loop is running
+        /// \brief scale game time against wall clock, from any thread, including while the loop is running
+        ///
+        /// \exception exception the scale is negative or not a number
         void set_time_scale(const time_type aTimeScale);
 
-        /// \brief the current time scale; \ref PAUSED means the simulation is not advancing
+        /// \brief the current time scale, from any thread; \ref PAUSED means the simulation is not advancing
         [[nodiscard]] time_type time_scale() const;
 
         /// \brief ask the loop to stop, from anywhere
@@ -129,12 +124,16 @@ namespace gdk::timing {
 
         /// \brief advance exactly one frame and return
         ///
-        /// \exception exception a tick is already in progress
+        /// \return `SHOULD_CLOSE` once a behaviour or \ref request_stop has ended the loop, and on every tick after
+        /// \exception exception a tick is already in progress, on this thread or another
+        /// \exception ... whatever a behaviour throws; a fixed step that throws runs again, with the same index, on
+        /// the next tick
         bool tick();
 
         /// \brief tick until a behaviour asks to stop
         ///
-        /// \exception exception a tick is already in progress
+        /// \exception exception a tick is already in progress, on this thread or another
+        /// \exception ... whatever a behaviour throws, as \ref tick does
         void run();
 
         /// \brief return to a fresh clock, frame count and step count

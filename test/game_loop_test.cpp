@@ -1,10 +1,11 @@
-// © Joseph Cameron - All Rights Reserved
+// © Joseph Cameron - MIT License
 
 #include <jfc/catch.hpp>
 
 #include <gdk/timing/game_loop.h>
 #include <gdk/timing/exception.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <stdexcept>
@@ -137,6 +138,45 @@ TEST_CASE("the frame rate cap paces the loop", "[loop][pacing]") {
 
         REQUIRE(frames == 400);
         REQUIRE(loop.maximum_frames_per_second() == frames_per_second{1199});
+    }
+
+    SECTION("a capped loop keeps close to its cap, not just under it") {
+        constexpr double CAP = 60;
+        constexpr int FRAMES = 31;
+
+        int frames = 0;
+        const auto started = std::chrono::steady_clock::now();
+
+        game_loop(frames_per_second{CAP}, close_after(frames, FRAMES)).run();
+
+        const double achieved = (FRAMES - 1) / seconds_since(started);
+
+        INFO("achieved " << achieved << " frames per second against a cap of " << CAP);
+
+        if constexpr (GDKTIMING_TEST_PACING_FLOOR) REQUIRE(achieved > CAP * 0.7);
+        REQUIRE(achieved <= CAP * 1.02);
+    }
+
+    SECTION("the time scale can be changed from another thread while the loop runs") {
+        std::atomic<bool> running{false};
+        int frames = 0;
+
+        game_loop loop(frames_per_second{2000}, [&](const game_loop::frame) {
+            running.store(true, std::memory_order_release);
+            return ++frames >= 400 ? game_loop::SHOULD_CLOSE : game_loop::SHOULD_CONTINUE;
+        }, steps_per_second{1000}, [](const game_loop::step) { return game_loop::SHOULD_CONTINUE; });
+
+        std::thread setter([&] {
+            while (!running.load(std::memory_order_acquire)) std::this_thread::yield();
+
+            for (int i = 0; i < 200; ++i) loop.set_time_scale(0.5 + i * 0.01);
+        });
+
+        loop.run();
+        setter.join();
+
+        REQUIRE(frames == 400);
+        REQUIRE(loop.time_scale() == Approx(2.49));
     }
 
     SECTION("a delta longer than the ceiling is clamped before anyone sees it") {
