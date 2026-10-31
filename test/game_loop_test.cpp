@@ -299,15 +299,18 @@ TEST_CASE("closing does not wait out the frame budget", "[loop][pacing]") {
     }
 
     SECTION("and so does one closed by a fixed step") {
-        const auto started = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point closed;
         int frames = 0;
 
         game_loop(frames_per_second{4},
             [&](const game_loop::frame) { ++frames; return game_loop::SHOULD_CONTINUE; },
             steps_per_second{1000},
-            [](const game_loop::step) { return game_loop::SHOULD_CLOSE; }).run();
+            [&](const game_loop::step) {
+                closed = std::chrono::steady_clock::now();
+                return game_loop::SHOULD_CLOSE;
+            }).run();
 
         REQUIRE(frames == 1);
-        REQUIRE(seconds_since(started) < 0.4);
+        REQUIRE(seconds_since(closed) < 0.1);
     }
 }
